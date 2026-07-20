@@ -1,0 +1,270 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Organizations & team ----------
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  PLANNER
+  MEMBER
+}
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+  clients     Client[]
+  events      Event[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships   Membership[]
+  assignedTasks Task[]       @relation("TaskAssignee")
+
+  @@map("users")
+}
+
+model Membership {
+  id             String       @id @default(cuid())
+  role           OrgRole      @default(MEMBER)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId         String
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+  @@map("memberships")
+}
+
+// ---------- Clients & events ----------
+
+model Client {
+  id             String       @id @default(cuid())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId String
+  name           String
+  email          String?
+  phone          String?
+  notes          String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  events Event[]
+
+  @@index([organizationId])
+  @@map("clients")
+}
+
+enum EventStatus {
+  INQUIRY
+  PLANNING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model Event {
+  id                 String      @id @default(cuid())
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organizationId     String
+  client             Client      @relation(fields: [clientId], references: [id])
+  clientId           String
+  name               String
+  type               String?
+  status             EventStatus @default(INQUIRY)
+  eventDate          DateTime?
+  venueName          String?
+  guestCountEstimate Int?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  guests        Guest[]
+  contracts     Contract[]
+  invoices      Invoice[]
+  budgetItems   BudgetItem[]
+  tasks         Task[]
+  timelineItems TimelineItem[]
+  documents     Document[]
+
+  @@index([organizationId])
+  @@index([clientId])
+  @@map("events")
+}
+
+// ---------- Guests ----------
+
+enum RsvpStatus {
+  PENDING
+  ATTENDING
+  DECLINED
+  MAYBE
+}
+
+model Guest {
+  id           String     @id @default(cuid())
+  event        Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId      String
+  name         String
+  email        String?
+  phone        String?
+  rsvpStatus   RsvpStatus @default(PENDING)
+  plusOnes     Int        @default(0)
+  tableNumber  String?
+  dietaryNotes String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@index([eventId])
+  @@map("guests")
+}
+
+// ---------- Contracts, invoices & payments ----------
+
+enum ContractStatus {
+  DRAFT
+  SENT
+  SIGNED
+  VOID
+}
+
+model Contract {
+  id          String         @id @default(cuid())
+  event       Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId     String
+  title       String
+  status      ContractStatus @default(DRAFT)
+  documentUrl String?
+  signedAt    DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([eventId])
+  @@map("contracts")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model Invoice {
+  id         String        @id @default(cuid())
+  event      Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId    String
+  status     InvoiceStatus @default(DRAFT)
+  amountDue  Decimal       @db.Decimal(10, 2)
+  amountPaid Decimal       @default(0) @db.Decimal(10, 2)
+  dueDate    DateTime?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  payments Payment[]
+
+  @@index([eventId])
+  @@map("invoices")
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId   String
+  amount      Decimal  @db.Decimal(10, 2)
+  method      String?
+  paidAt      DateTime @default(now())
+  externalRef String?
+
+  @@index([invoiceId])
+  @@map("payments")
+}
+
+// ---------- Budget ----------
+
+model BudgetItem {
+  id            String   @id @default(cuid())
+  event         Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId       String
+  category      String
+  description   String?
+  estimatedCost Decimal  @db.Decimal(10, 2)
+  actualCost    Decimal? @db.Decimal(10, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([eventId])
+  @@map("budget_items")
+}
+
+// ---------- Tasks & timeline ----------
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+}
+
+model Task {
+  id         String     @id @default(cuid())
+  event      Event      @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId    String
+  title      String
+  status     TaskStatus @default(TODO)
+  dueDate    DateTime?
+  assignee   User?      @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  assigneeId String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([eventId])
+  @@map("tasks")
+}
+
+model TimelineItem {
+  id        String    @id @default(cuid())
+  event     Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  title     String
+  startTime DateTime
+  endTime   DateTime?
+  notes     String?
+
+  @@index([eventId])
+  @@map("timeline_items")
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  eventId   String
+  name      String
+  url       String
+  mimeType  String?
+  createdAt DateTime @default(now())
+
+  @@index([eventId])
+  @@map("documents")
+}

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm -v)",
+      "WebFetch(domain:www.aisleplanner.com)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm generate *)",
+      "Bash(pnpm turbo *)"
+    ]
+  }
+}
