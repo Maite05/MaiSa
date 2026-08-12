@@ -1,0 +1,48 @@
+/* Minimal reset — the design system itself is applied via @maisa/ui's
+   inline styles, so this file only needs to neutralize browser defaults
+   and set the page-level font/background before React hydrates. */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+  background: #fff8f4; /* color.background */
+  color: #1f1b17; /* color.onSurface */
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+img {
+  max-width: 100%;
+  display: block;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* The one keyframe animation @maisa/ui's components need (Button's loading
+   spinner) — kept here rather than injected per-instance since it's truly
+   global and only needs to be defined once per page. */
+@keyframes maisa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

@@ -4,4 +4,9 @@ packages:
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true
+  # Neither is required for the app to build/run (next build & next dev both
+  # succeed without them). Flip to true only if you knowingly need sharp's
+  # native binary for next/image optimization in production.
+  esbuild: false
   prisma: true
+  sharp: false
