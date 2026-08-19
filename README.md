@@ -22,8 +22,8 @@ MaiSa is aimed at the same broad space as tools like Aisle Planner (CRM, contrac
 - **Monorepo:** [pnpm workspaces](https://pnpm.io/workspaces) + [Turborepo](https://turborepo.com)
 - **Language:** TypeScript throughout
 - **Database:** PostgreSQL via [Prisma](https://www.prisma.io/)
-- **Backend:** a single shared API (`apps/api`) consumed by every client — web, admin, and mobile — so business logic and auth live in one place instead of being duplicated per app
-- **Frontend:** Next.js (`apps/web`, `apps/admin`)
+- **Backend:** a single shared API (`apps/api`) consumed by every client — web, admin, and mobile — so business logic and auth live in one place instead of being duplicated per app. Fastify + Zod (`fastify-type-provider-zod`) for request/response validation, JWT bearer auth, multi-org support via an `x-organization-id` header.
+- **Frontend:** Next.js App Router (`apps/web`, `apps/admin`) — [TanStack Query](https://tanstack.com/query) for server state, [Zustand](https://zustand-demo.pmnd.rs/) for local UI state, [react-hook-form](https://react-hook-form.com/) + [Zod](https://zod.dev/) for forms, all built on a shared component kit in `packages/ui`
 - **Mobile:** React Native (`apps/mobile`)
 
 ## Project structure
@@ -64,6 +64,41 @@ The data model (`packages/database/prisma/schema.prisma`) is organized around a 
 - **Task / TimelineItem** — checklists assignable to team members, and day-of scheduling
 - **Document** — file references (contracts, photos, etc.), backed by `packages/storage`
 
+## How the app works
+
+This walks through `apps/web` as a user would actually move through it — what's real (backed by `apps/api` and the database above) versus what's currently a UI preview running on local mock data.
+
+### Getting in
+
+A new user signs up at `/signup` with their name, email, password, and an organization name — that call ([`POST /auth/signup`](apps/api/src/modules/auth)) atomically creates the `User`, an `Organization`, and a `Membership` with the `OWNER` role, then returns a JWT. Returning users log in at `/login`. The session (token, user, active organization) is kept client-side and sent on every request as `Authorization: Bearer <token>` plus an `x-organization-id` header, so the backend always knows which organization's data you're allowed to see — this is what makes MaiSa multi-tenant: one login can belong to more than one organization, isolated from each other. Every route except `/login` and `/signup` requires a session; visiting one signed out redirects you back to `/login`.
+
+### The planning workspace
+
+Once in, the top nav (Dashboard, Events, Clients, Vendors, Team) is the spine of the app:
+
+- **Dashboard** (`/`) — a production-overview landing page: upcoming releases, a pipeline snapshot, a production calendar, and recent team activity. Currently illustrative content, not yet wired to live counts.
+- **Clients** (`/clients`) — the agency's client roster: name, contact info, notes. This is where a contact lands once they're a real prospect worth planning for (the CRM module's Leads list, further down, is the pre-client pipeline).
+- **Events** (`/events`) — every event the organization is running: name, linked client, date, venue, status (Inquiry → Planning → Confirmed → Completed/Cancelled). Creating one just needs a name and an existing client.
+- **Team** (`/team`) — everyone with a membership in the organization, their role, and (for Admins/Owners) the ability to invite by email, change roles, or remove someone. The backend enforces the same role check server-side, so this isn't just a UI restriction.
+- **Settings** (`/settings`) — the organization's name/profile, editable by Owners and Admins.
+
+### Inside an event
+
+Clicking into an event (`/events/[eventId]`) opens its workspace — everything below it is scoped to that one event and shares its own sub-nav:
+
+- **Overview** — the event's vitals (client, date, venue, status) plus rollups pulled live from its guests, budget, and tasks: an RSVP count, spend-vs-allocated, and an upcoming-milestones view built from the timeline.
+- **Guests** — the guest list: RSVP status (pending/attending/declined/maybe), plus-ones, table assignment, dietary notes.
+- **Budget** — line items by category with an estimated vs. actual cost each, rolling up into the overview's spend total.
+- **Tasks** — a to-do/in-progress/done board, assignable, with due dates.
+- **Timeline** — the day-of run of show: ordered items with start/end times and notes.
+- **Contracts** — status from draft through signed, with a link out to the document itself.
+- **Documents** — files attached to the event (photos, signed PDFs, etc.).
+- **Payments** — invoices (amount due, due date, status) with payments recorded against each one, auto-updating the invoice's paid amount and status as they come in.
+
+### Where the app is headed
+
+The rest of the nav — **Vendors**, **Calendar**, **Checklists**, **CRM** (leads), **Inventory**, **Marketplace**, **Templates**, **Analytics**, **Notifications**, **Reports**, **Subscriptions**, and the **AI Assistant** — is built and clickable today, but runs on local mock data rather than `apps/api`, because those modules don't have a backend yet. They're real UI (you can add/edit/delete records, and it behaves like the rest of the app), just not persisted anywhere beyond your browser session. The AI Assistant in particular returns canned, keyword-matched replies — there's no live model call behind it yet (`packages/ai` is still a stub). Each of these becomes a Tier 1 feature — swapped over to a real `apps/api` module and database-backed data — the same way Clients and Events already have been.
+
 ## Getting started
 
 ### Prerequisites
@@ -87,6 +122,20 @@ cp .env.example .env
 ```
 
 `.env` is git-ignored — never commit real credentials.
+
+`apps/web` additionally reads `NEXT_PUBLIC_API_URL` (defaults to `http://localhost:4000/api/v1` if unset) to know where to reach `apps/api`.
+
+### Running the app locally
+
+`apps/web` needs `apps/api` (and a Postgres database behind it) running to actually log in, create clients/events, and so on — the pages that don't yet have a backend (see [Where the app is headed](#where-the-app-is-headed)) will still render and let you click around on mock data even without it. In two terminals:
+
+```bash
+pnpm --filter @maisa/database migrate:dev   # first time only — see Database, below
+pnpm --filter @maisa/api dev                # http://localhost:4000
+pnpm --filter @maisa/web dev                # http://localhost:3000
+```
+
+Or run everything at once from the root with `pnpm dev` (see Common commands).
 
 ### Common commands
 
@@ -125,7 +174,8 @@ MaiSa is under active development.
 
 - ✅ Monorepo tooling (pnpm workspaces + Turborepo), workspace structure, shared package skeletons
 - ✅ Core data model (`packages/database`) — phase 1 scope (planner ↔ client), schema defined, Prisma client generating and typechecking cleanly
-- 🔜 `apps/api` scaffolding to expose the data model
-- 🔜 Next.js scaffolding for `apps/web` / `apps/admin`, React Native for `apps/mobile`
-- 🔜 AI/automation features in `packages/ai`
+- ✅ `apps/api` — auth, clients, events, guests, contracts, invoices/payments, budget, tasks, timeline, documents, and organizations/team modules, all validated with Zod and backed by the schema above
+- ✅ `apps/web` — signup/login, dashboard, and the full client/event workspace (see [How the app works](#how-the-app-works)) wired to `apps/api`; the remaining nav items (vendors, calendar, checklists, CRM, inventory, marketplace, templates, analytics, notifications, reports, subscriptions, AI assistant) are built as UI running on local mock data, pending their own backend modules
+- 🔜 `apps/admin`, React Native for `apps/mobile`
+- 🔜 Real AI/automation in `packages/ai` (the AI Assistant page currently returns canned responses)
 - 🔮 Phase 2: venue and vendor coordination

@@ -17,6 +17,17 @@ out/
 .turbo/
 .nx/
 
+# Vercel
+.vercel
+
+# React Native / Expo (apps/mobile)
+.expo/
+.expo-shared/
+*.jsbundle
+ios/Pods/
+android/.gradle/
+android/app/build/
+
 # Logs
 *.log
 npm-debug.log*
